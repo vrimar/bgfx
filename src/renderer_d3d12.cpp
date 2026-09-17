@@ -3199,6 +3199,7 @@ namespace bgfx { namespace d3d12
 			||  m_mainSwapChain.formatDepthStencil !=  _swapChain.formatDepthStencil
 			||  m_mainSwapChain.nwh                !=  _swapChain.nwh
 			||  m_mainSwapChain.ndt                !=  _swapChain.ndt
+			||  m_mainSwapChain.flags              !=  _swapChain.flags
 			|| (m_reset&maskFlags)   != (_reset&maskFlags) )
 			{
 				uint32_t flags = _reset & (~BGFX_RESET_INTERNAL_FORCE);
