@@ -3530,7 +3530,7 @@ WGPU_IMPORT
 					.stripIndexFormat = primInfo.m_stripIndexFormat[!_isIndex16],
 					.frontFace        = !!(_state&BGFX_STATE_FRONT_CCW) ? WGPUFrontFace_CCW : WGPUFrontFace_CW,
 					.cullMode         = s_cullMode[cull],
-					.unclippedDepth   = !m_depthClamp,
+					.unclippedDepth   = m_depthClamp,
 				},
 				.depthStencil = WGPUTextureFormat_Undefined == depthStencilState.format
 					? NULL
