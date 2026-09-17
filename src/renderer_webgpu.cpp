@@ -3209,7 +3209,12 @@ WGPU_IMPORT
 					}
 					else
 					{
-						elem->format = WGPUVertexFormat_Float32x3;
+						// A shader input the stream does not carry still has to be bound, and a
+						// strict implementation rejects a stand-in that reads past the stride.
+						elem->format = _layout.m_stride >= 12 ? WGPUVertexFormat_Float32x3
+							: _layout.m_stride >= 8 ? WGPUVertexFormat_Float32x2
+							: WGPUVertexFormat_Float32
+							;
 						elem->offset = 0;
 					}
 
