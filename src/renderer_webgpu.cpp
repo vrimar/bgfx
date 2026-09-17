@@ -13,6 +13,17 @@
 #	include <bx/pixelformat.h>
 #	include "renderer_webgpu.h"
 
+#	if BX_PLATFORM_EMSCRIPTEN
+#		include <emscripten/em_js.h>
+
+// emscripten_webgpu_get_device parents the imported device to no instance, and every call that
+// walks device -> instance then fails. Import it against ours instead.
+EM_JS(WGPUDevice, bgfx_wgpuImportDevice, (WGPUInstance _instance), {
+	var device = Module['preinitializedWebGPUDevice'];
+	return device ? WebGPU.importJsDevice(device, _instance) : 0;
+});
+#	endif // BX_PLATFORM_EMSCRIPTEN
+
 namespace bgfx { namespace wgpu
 {
 	static char s_viewName[BGFX_CONFIG_MAX_VIEWS][BGFX_CONFIG_MAX_VIEW_NAME];
@@ -1079,12 +1090,15 @@ WGPU_IMPORT
 
 			{
 				{
+#if BX_PLATFORM_EMSCRIPTEN
+					// TimedWaitAny is only offered under JSPI, and nothing here waits: the device
+					// arrives already resolved.
+					WGPUInstanceDescriptor instanceDesc = WGPU_INSTANCE_DESCRIPTOR_INIT;
+#else
 					WGPUInstanceFeatureName requiredFeatures[] =
 					{
 						WGPUInstanceFeatureName_TimedWaitAny,
-#if !BX_PLATFORM_EMSCRIPTEN
 						WGPUInstanceFeatureName_ShaderSourceSPIRV,
-#endif // !BX_PLATFORM_EMSCRIPTEN
 					};
 
 					WGPUInstanceDescriptor instanceDesc =
@@ -1094,6 +1108,7 @@ WGPU_IMPORT
 						.requiredFeatures     = requiredFeatures,
 						.requiredLimits       = NULL,
 					};
+#endif // BX_PLATFORM_EMSCRIPTEN
 
 					m_instance = wgpuCreateInstance(&instanceDesc);
 
@@ -1107,6 +1122,21 @@ WGPU_IMPORT
 				}
 
 				{
+#if BX_PLATFORM_EMSCRIPTEN
+					// Requesting an adapter means blocking on a promise, which the browser can only
+					// do through JSPI. The page hands us a device it resolved itself instead, and
+					// every query below reads off that rather than off an adapter.
+					m_device = bgfx_wgpuImportDevice(m_instance);
+
+					if (NULL == m_device)
+					{
+						BX_TRACE("Init error: Module.preinitializedWebGPUDevice is not set.");
+						goto error;
+					}
+
+					m_adapter = NULL;
+					errorState = ErrorState::DeviceCreated;
+#else
 					WGPURequestAdapterOptions rao =
 					{
 						.nextInChain          = NULL,
@@ -1139,6 +1169,7 @@ WGPU_IMPORT
 					}
 
 					errorState = ErrorState::AdapterCreated;
+#endif // BX_PLATFORM_EMSCRIPTEN
 				}
 
 				{
@@ -1177,7 +1208,11 @@ WGPU_IMPORT
 					BX_TRACE("");
 
 					WGPUSupportedFeatures supportedFeatures;
+#if BX_PLATFORM_EMSCRIPTEN
+					wgpuDeviceGetFeatures(m_device, &supportedFeatures);
+#else
 					wgpuAdapterGetFeatures(m_adapter, &supportedFeatures);
+#endif // BX_PLATFORM_EMSCRIPTEN
 
 					BX_TRACE("Supported features (%d):", supportedFeatures.featureCount);
 
@@ -1265,7 +1300,11 @@ WGPU_IMPORT
 					BX_TRACE("");
 
 					WGPULimits requiredLimits = WGPU_LIMITS_INIT;
+#if BX_PLATFORM_EMSCRIPTEN
+					WGPUStatus status = wgpuDeviceGetLimits(m_device, &requiredLimits);
+#else
 					WGPUStatus status = wgpuAdapterGetLimits(m_adapter, &requiredLimits);
+#endif // BX_PLATFORM_EMSCRIPTEN
 
 					if (WGPUStatus_Success == status)
 					{
@@ -1324,13 +1363,10 @@ WGPU_IMPORT
 					};
 #endif // !BX_PLATFORM_EMSCRIPTEN
 
+#if !BX_PLATFORM_EMSCRIPTEN
 					WGPUDeviceDescriptor deviceDesc =
 					{
-#if BX_PLATFORM_EMSCRIPTEN
-						.nextInChain            = NULL,
-#else
 						.nextInChain            = &dawnTogglesDescriptor.chain,
-#endif // BX_PLATFORM_EMSCRIPTEN
 						.label                  = WGPU_STRING_VIEW_INIT,
 						.requiredFeatureCount   = requiredFeatureCount,
 						.requiredFeatures       = requiredFeatures,
@@ -1375,13 +1411,18 @@ WGPU_IMPORT
 					}
 
 					errorState = ErrorState::DeviceCreated;
+#endif // !BX_PLATFORM_EMSCRIPTEN
 				}
 
 				{
 					WGPUStatus status;
 
 					WGPUAdapterInfo adapterInfo = WGPU_ADAPTER_INFO_INIT;
+#if BX_PLATFORM_EMSCRIPTEN
+					status = wgpuDeviceGetAdapterInfo(m_device, &adapterInfo);
+#else
 					status = wgpuAdapterGetInfo(m_adapter, &adapterInfo);
+#endif // BX_PLATFORM_EMSCRIPTEN
 
 					if (WGPUStatus_Success == status)
 					{
@@ -1417,7 +1458,11 @@ WGPU_IMPORT
 					BX_TRACE("");
 
 					m_limits = WGPU_LIMITS_INIT;
+#if BX_PLATFORM_EMSCRIPTEN
+					status = wgpuDeviceGetLimits(m_device, &m_limits);
+#else
 					status = wgpuAdapterGetLimits(m_adapter, &m_limits);
+#endif // BX_PLATFORM_EMSCRIPTEN
 
 					if (WGPUStatus_Success == status)
 					{
@@ -5256,7 +5301,7 @@ WGPU_IMPORT
 				,
 			.width           = m_desc.width,
 			.height          = m_desc.height,
-			.viewFormatCount = format != m_viewFormat ? 1ull : 0ull,
+			.viewFormatCount = format != m_viewFormat ? size_t(1) : size_t(0),
 			.viewFormats     = format != m_viewFormat ? &m_viewFormat : NULL,
 			.alphaMode       = WGPUCompositeAlphaMode_Auto,
 			.presentMode     = WGPUPresentMode_Fifo,
