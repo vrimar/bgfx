@@ -5312,6 +5312,7 @@ WGPU_IMPORT
 		wgpuRelease(m_textureView);
 		wgpuRelease(m_texture);
 
+#if !BX_PLATFORM_EMSCRIPTEN
 		WGPUSurfaceTexture surfaceTexture = WGPU_SURFACE_TEXTURE_INIT;
 		WGPU_CHECK(wgpuSurfaceGetCurrentTexture(m_surface, &surfaceTexture) );
 
@@ -5323,6 +5324,7 @@ WGPU_IMPORT
 
 		m_texture     = surfaceTexture.texture;
 		m_textureView = createTextureView();
+#endif // !BX_PLATFORM_EMSCRIPTEN
 
 		const uint32_t msaa = s_msaa[(_desc.flags&BGFX_SWAP_CHAIN_MSAA_MASK)>>BGFX_SWAP_CHAIN_MSAA_SHIFT];
 
@@ -5671,9 +5673,19 @@ WGPU_IMPORT
 	{
 		wgpuRelease(m_textureView);
 		wgpuRelease(m_texture);
-#if !BX_PLATFORM_EMSCRIPTEN
+#if BX_PLATFORM_EMSCRIPTEN
+		// The canvas texture expires with the task that acquired it, so the next one is taken at the
+		// top of the next frame rather than here.
+	}
+
+	void SwapChainWGPU::acquire()
+	{
+		// A frame that drew nothing here does not present, so it can leave an expired texture behind.
+		wgpuRelease(m_textureView);
+		wgpuRelease(m_texture);
+#else
 		WGPU_CHECK(wgpuSurfacePresent(m_surface) );
-#endif // !BX_PLATFORM_EMSCRIPTEN
+#endif // BX_PLATFORM_EMSCRIPTEN
 
 		WGPUSurfaceTexture surfaceTexture = WGPU_SURFACE_TEXTURE_INIT;
 		wgpuSurfaceGetCurrentTexture(m_surface, &surfaceTexture);
@@ -6776,6 +6788,13 @@ WGPU_IMPORT
 		m_occlusionQuery.readResultsAsync(_render);
 		m_gpuTimer.readResultsAsync();
 		WGPU_CHECK(wgpuInstanceProcessEvents(s_renderWGPU->m_instance) );
+
+#if BX_PLATFORM_EMSCRIPTEN
+		for (uint16_t ii = 0; ii < m_numWindows; ++ii)
+		{
+			getFrameBuffer(m_windows[ii]).m_swapChain.acquire();
+		}
+#endif // BX_PLATFORM_EMSCRIPTEN
 
 		if (updateResolution(_render->m_mainSwapChain, _render->m_reset) )
 		{

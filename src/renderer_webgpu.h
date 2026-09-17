@@ -689,6 +689,7 @@ namespace wgpu {
 		bool configure(const SwapChain& _desc);
 		WGPUTextureView createTextureView();
 		void present();
+		void acquire();
 
 		void* m_nwh;
 		SwapChain m_desc;
