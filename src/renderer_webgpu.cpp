@@ -13,6 +13,14 @@
 #	include <bx/pixelformat.h>
 #	include "renderer_webgpu.h"
 
+#	if BX_PLATFORM_EMSCRIPTEN
+#		include <emscripten/em_js.h>
+
+EM_JS(WGPUDevice, bgfxWgpuImportDevice, (WGPUDevice _device, WGPUInstance _instance), {
+	return WebGPU.importJsDevice(WebGPU.getJsObject(_device), _instance);
+});
+#	endif // BX_PLATFORM_EMSCRIPTEN
+
 namespace bgfx { namespace wgpu
 {
 	static char s_viewName[BGFX_CONFIG_MAX_VIEWS][BGFX_CONFIG_MAX_VIEW_NAME];
@@ -1076,6 +1084,29 @@ WGPU_IMPORT
 #endif // !BX_PLATFORM_EMSCRIPTEN
 
 			{
+				if (NULL != g_platformData.context)
+				{
+#if BX_PLATFORM_EMSCRIPTEN
+					m_instance = wgpuCreateInstance(NULL);
+					m_device   = bgfxWgpuImportDevice( (WGPUDevice)g_platformData.context, m_instance);
+#else
+					m_device   = (WGPUDevice)g_platformData.context;
+					wgpuDeviceAddRef(m_device);
+					m_adapter  = wgpuDeviceGetAdapter(m_device);
+					m_instance = wgpuAdapterGetInstance(m_adapter);
+#endif // BX_PLATFORM_EMSCRIPTEN
+
+					errorState = ErrorState::DeviceCreated;
+
+					if (NULL == m_instance
+					||  NULL == m_device)
+					{
+						BX_TRACE("Init error: Failed to use external device.");
+						goto error;
+					}
+				}
+
+				if (NULL == m_instance)
 				{
 					WGPUInstanceFeatureName requiredFeatures[] =
 					{
@@ -1104,6 +1135,7 @@ WGPU_IMPORT
 					errorState = ErrorState::InstanceCreated;
 				}
 
+				if (NULL == m_device)
 				{
 					WGPURequestAdapterOptions rao =
 					{
@@ -1175,7 +1207,15 @@ WGPU_IMPORT
 					BX_TRACE("");
 
 					WGPUSupportedFeatures supportedFeatures;
-					wgpuAdapterGetFeatures(m_adapter, &supportedFeatures);
+
+					if (NULL != m_device)
+					{
+						wgpuDeviceGetFeatures(m_device, &supportedFeatures);
+					}
+					else
+					{
+						wgpuAdapterGetFeatures(m_adapter, &supportedFeatures);
+					}
 
 					BX_TRACE("Supported features (%d):", supportedFeatures.featureCount);
 
@@ -1207,7 +1247,10 @@ WGPU_IMPORT
 					BX_TRACE("");
 
 					wgpuSupportedFeaturesFreeMembers(supportedFeatures);
+				}
 
+				if (NULL == m_device)
+				{
 					WGPUFeatureName requiredFeatures[] =
 					{
 						ifSupported(WGPUFeatureName_TimestampQuery),
@@ -1379,7 +1422,7 @@ WGPU_IMPORT
 					WGPUStatus status;
 
 					WGPUAdapterInfo adapterInfo = WGPU_ADAPTER_INFO_INIT;
-					status = wgpuAdapterGetInfo(m_adapter, &adapterInfo);
+					status = wgpuDeviceGetAdapterInfo(m_device, &adapterInfo);
 
 					if (WGPUStatus_Success == status)
 					{
@@ -1415,7 +1458,7 @@ WGPU_IMPORT
 					BX_TRACE("");
 
 					m_limits = WGPU_LIMITS_INIT;
-					status = wgpuAdapterGetLimits(m_adapter, &m_limits);
+					status = wgpuDeviceGetLimits(m_device, &m_limits);
 
 					if (WGPUStatus_Success == status)
 					{
