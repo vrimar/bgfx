@@ -10269,6 +10269,7 @@ namespace bgfx { namespace gl
 			if (isValid(boundProgram) )
 			{
 				m_program[boundProgram.idx].unbindAttributes();
+				m_program[boundProgram.idx].unbindInstanceData();
 				boundProgram = BGFX_INVALID_HANDLE;
 			}
 
