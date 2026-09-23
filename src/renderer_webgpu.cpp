@@ -2384,6 +2384,7 @@ WGPU_IMPORT
 			const uint32_t height = frameBuffer.m_height;
 
 			frameBuffer.m_needPresent = true;
+			frameBuffer.m_swapChain.acquire();
 
 			float proj[16];
 			bx::mtxOrtho(proj, 0.0f, (float)width, (float)height, 0.0f, 0.0f, 1000.0f, 0.0f, false);
@@ -5328,6 +5329,7 @@ WGPU_IMPORT
 		wgpuRelease(m_textureView);
 		wgpuRelease(m_texture);
 
+#if !BX_PLATFORM_EMSCRIPTEN
 		WGPUSurfaceTexture surfaceTexture = WGPU_SURFACE_TEXTURE_INIT;
 		WGPU_CHECK(wgpuSurfaceGetCurrentTexture(m_surface, &surfaceTexture) );
 
@@ -5339,6 +5341,7 @@ WGPU_IMPORT
 
 		m_texture     = surfaceTexture.texture;
 		m_textureView = createTextureView();
+#endif // !BX_PLATFORM_EMSCRIPTEN
 
 		const uint32_t msaa = s_msaa[(_desc.flags&BGFX_SWAP_CHAIN_MSAA_MASK)>>BGFX_SWAP_CHAIN_MSAA_SHIFT];
 
@@ -5687,13 +5690,12 @@ WGPU_IMPORT
 		return textureView;
 	}
 
-	void SwapChainWGPU::present()
+	void SwapChainWGPU::acquire()
 	{
-		wgpuRelease(m_textureView);
-		wgpuRelease(m_texture);
-#if !BX_PLATFORM_EMSCRIPTEN
-		WGPU_CHECK(wgpuSurfacePresent(m_surface) );
-#endif // !BX_PLATFORM_EMSCRIPTEN
+		if (NULL != m_texture)
+		{
+			return;
+		}
 
 		WGPUSurfaceTexture surfaceTexture = WGPU_SURFACE_TEXTURE_INIT;
 		wgpuSurfaceGetCurrentTexture(m_surface, &surfaceTexture);
@@ -5724,6 +5726,17 @@ WGPU_IMPORT
 		{
 			m_textureView = createTextureView();
 		}
+	}
+
+	void SwapChainWGPU::present()
+	{
+		wgpuRelease(m_textureView);
+		wgpuRelease(m_texture);
+
+#if !BX_PLATFORM_EMSCRIPTEN
+		WGPU_CHECK(wgpuSurfacePresent(m_surface) );
+		acquire();
+#endif // !BX_PLATFORM_EMSCRIPTEN
 	}
 
 	void FrameBufferWGPU::create(uint8_t _num, const Attachment* _attachment)
@@ -6807,6 +6820,16 @@ WGPU_IMPORT
 		m_gpuTimer.readResultsAsync();
 		WGPU_CHECK(wgpuInstanceProcessEvents(s_renderWGPU->m_instance) );
 
+#if BX_PLATFORM_EMSCRIPTEN
+		// Canvas texture expires with the task that acquired it, and flip is skipped after BGFX_FRAME_FLUSH.
+		for (uint16_t ii = 0; ii < m_numWindows; ++ii)
+		{
+			SwapChainWGPU& swapChain = getFrameBuffer(m_windows[ii]).m_swapChain;
+			wgpuRelease(swapChain.m_textureView);
+			wgpuRelease(swapChain.m_texture);
+		}
+#endif // BX_PLATFORM_EMSCRIPTEN
+
 		if (updateResolution(_render->m_mainSwapChain, _render->m_reset) )
 		{
 			return;
@@ -7048,6 +7071,7 @@ WGPU_IMPORT
 					if (isSwapChain)
 					{
 						fb.m_needPresent = true;
+						fb.m_swapChain.acquire();
 					}
 
 					WGPUTextureView depthStencilTextureView = isSwapChain
