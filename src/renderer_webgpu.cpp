@@ -7425,7 +7425,9 @@ WGPU_IMPORT
 						renderPassEncoder = NULL;
 					}
 
-					if (item > 1)
+					// A view whose compute ran first is already timed; restarting would split it in two.
+					if (viewChanged
+					&&  item > 1)
 					{
 						profiler.end();
 					}
@@ -7437,7 +7439,10 @@ WGPU_IMPORT
 					formatViewName(viewName, _render, view, " ");
 					BGFX_WGPU_PROFILER_BEGIN(view, kColorView);
 
-					profiler.begin(view);
+					if (viewChanged)
+					{
+						profiler.begin(view);
+					}
 
 					FrameBufferWGPU& fb = getFrameBuffer(fbh);
 
@@ -7671,8 +7676,15 @@ WGPU_IMPORT
 
 						if (viewChanged)
 						{
+							if (item > 1)
+							{
+								profiler.end();
+							}
+
 							submitUniformCache(ucs, view);
 							submitBlit(bs, view);
+
+							profiler.begin(view);
 						}
 
 						WGPUCommandEncoder cmdEncoder = m_cmd.alloc();
