@@ -11753,7 +11753,9 @@ VK_DESTROY
 						beginRenderPass = false;
 					}
 
-					if (item > 1)
+					// A view whose compute ran first is already timed; restarting would split it in two.
+					if (viewChanged
+					&&  item > 1)
 					{
 						profiler.end();
 					}
@@ -11772,7 +11774,10 @@ VK_DESTROY
 					formatViewName(viewName, _render, view, " ");
 					BGFX_VK_PROFILER_BEGIN(view, kColorView);
 
-					profiler.begin(view);
+					if (viewChanged)
+					{
+						profiler.begin(view);
+					}
 
 					const FrameBufferVK& fb = getFrameBuffer(m_fbh);
 
@@ -11980,9 +11985,16 @@ VK_DESTROY
 
 					if (viewChanged)
 					{
+						if (item > 1)
+						{
+							profiler.end();
+						}
+
 						submitUniformCache(ucs, view);
 						submitBlit(bs, view);
 						currentPipeline = VK_NULL_HANDLE;
+
+						profiler.begin(view);
 					}
 
 					// renderpass external subpass dependencies handle graphics -> compute and compute -> graphics
