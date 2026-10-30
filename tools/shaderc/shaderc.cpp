@@ -5,6 +5,7 @@
 
 #include "shaderc.h"
 #include "pp.h"
+#include "../../src/config.h"
 #include "../../src/shader.h"
 #include <bx/commandline.h>
 #include <bx/filepath.h>
@@ -1504,6 +1505,28 @@ namespace bgfx
 				{
 					parse = bx::strLTrimSpace(bx::StringView(parse.getPtr() + 1, parse.getTerm() ) );
 					init.set(parse.getPtr(), eol.getPtr() );
+				}
+
+				uint32_t instanceIndex;
+				if (!semantics.isEmpty()
+				&&  0 == bx::strCmp(name, "i_data", 6)
+				&&  bx::fromString(&instanceIndex, bx::StringView(name.getPtr() + 6, name.getTerm() ) ) )
+				{
+					// D3D binds instance data by semantic alone; any other backend would hide a mismatch.
+					char expected[16];
+					bx::snprintf(expected, sizeof(expected), "TEXCOORD%d", BGFX_CONFIG_INSTANCE_DATA_FIRST_TEXCOORD - int32_t(instanceIndex) );
+
+					if (0 != bx::strCmpI(semantics, expected) )
+					{
+						bx::write(_messageWriter, &messageErr
+							, "Error: Varying '%S' must use semantic %s, not '%S' (i_data<N> is TEXCOORD%d-N).\n"
+							, &name
+							, expected
+							, &semantics
+							, BGFX_CONFIG_INSTANCE_DATA_FIRST_TEXCOORD
+							);
+						return false;
+					}
 				}
 
 				if (!typen.isEmpty()
