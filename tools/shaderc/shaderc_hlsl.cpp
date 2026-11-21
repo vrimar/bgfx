@@ -18,6 +18,8 @@
 #	include <wsl/winadapter.h>
 #	include <d3d4linux.h>
 #else
+// bx includes a lean <windows.h> on ARM64, so COM's `interface` macro has to come from here.
+#	include <objbase.h>
 #	include <d3dcompiler.h>
 #	include <d3d11shader.h>
 #endif // BX_PLATFORM_LINUX || BX_PLATFORM_OSX
